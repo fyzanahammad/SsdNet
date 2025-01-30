@@ -219,12 +219,12 @@ def achieve_legal_model(list_IDs, list_size, factor):
     while True:
         filename = list_IDs[random.randint(0,len(list_IDs)-1)]
         
-        cur_factor = list_size[str(filename)]
-        
+        # Convert Windows path to Unix-style for minfo.csv lookup
+        unix_path = str(filename).replace('\\', '/')
+        cur_factor = list_size[unix_path]
         
         if cur_factor >= factor:
             continue
-        
         
         label = int(os.path.basename(filename).split('_')[0])
         with open(filename, 'rb') as f:
@@ -235,44 +235,74 @@ def achieve_legal_model(list_IDs, list_size, factor):
 
 
 
-def achieve_random_model(list_IDs, list_size):
+def achieve_random_model(list_IDs, list_size, grid_size=128):  
+    """Create a random model with multiple features
+    Args:
+        list_IDs: list of model IDs
+        list_size: dictionary of model sizes
+        grid_size: size of the grid (64 or 128)
+    """
+    # Original number of features for 64 grid
+    #num_features = random.randint(2,10)
+    #factor = 76 - 6*num_features
     
-    #num_features = 2
-    num_features = random.randint(2,10)
-    factor = 76 - 6*num_features
+    # Adjusted for 128 grid - allowing fewer features since each is 8x larger
+    num_features = random.randint(2,6)  
+    factor = 152 - 12*num_features  
     
-    #print('n features:', num_features)
-    
-    components = np.zeros((num_features,64,64,64))
-    
-    ret_model = np.ones((64,64,64))
-    
+    components = np.zeros((num_features, grid_size, grid_size, grid_size))
+    ret_model = np.ones((grid_size, grid_size, grid_size))
     model_label = np.zeros((0))
     
     for i in range(num_features):
-        
         label, model = achieve_legal_model(list_IDs, list_size, factor)
-    
-        model_label = np.append(model_label,label)
-        components[i,:,:,:] = rotate_sample24(model)
+        model_label = np.append(model_label, label)
+        
+        # If model is 64 grid but we need 128, upsample it in rotate_sample24
+        if model.shape[0] == 64 and grid_size == 128:
+            model_128 = np.zeros((128, 128, 128), dtype=model.dtype)
+            for x in range(64):
+                for y in range(64):
+                    for z in range(64):
+                        # Each 64 grid voxel becomes 2x2x2 voxels in 128 grid
+                        model_128[x*2:(x+1)*2, y*2:(y+1)*2, z*2:(z+1)*2] = model[x,y,z]
+            components[i,:,:,:] = rotate_sample24(model_128)
+        else:
+            components[i,:,:,:] = rotate_sample24(model)
+            
         ret_model = ret_model * components[i,:,:,:]
             
     return ret_model, model_label, components
 
 
     
-def create_img(obj3d, rotation, grayscale = False):
+def create_img(obj3d, rotation, grayscale=False, grid_size=64):  
+    """Create an image from 3D object data
+    Args:
+        obj3d: 3D object data
+        rotation: rotation angle
+        grayscale: whether to create grayscale image
+        grid_size: size of the grid (64 or 128)
+    """
+    # If input is 64 grid but we need 128, upsample it
+    if obj3d.shape[0] == 64 and grid_size == 128:
+        obj3d_128 = np.zeros((128, 128, 128), dtype=obj3d.dtype)
+        for i in range(64):
+            for j in range(64):
+                for k in range(64):
+                    # Each 64 grid voxel becomes 2x2x2 voxels in 128 grid
+                    obj3d_128[i*2:(i+1)*2, j*2:(j+1)*2, k*2:(k+1)*2] = obj3d[i,j,k]
+        cursample = obj3d_128.copy()
+    else:
+        cursample = obj3d.copy()
     
-    cursample = obj3d.copy()
-    #cursample = cp.array(cursample)
-    cursample = rotate_sample(cursample,rotation)
+    cursample = rotate_sample(cursample, rotation)
     
-    img0 = np.zeros((cursample.shape[1],cursample.shape[2]))
+    img0 = np.zeros((cursample.shape[1], cursample.shape[2]))
     
     for i in range(img0.shape[0]):
         for j in range(img0.shape[1]):
             for d in range(cursample.shape[0]):
-                
                 if cursample[d,i,j] == True:
                     img0[i,j] = d/cursample.shape[0]
                     break
@@ -286,17 +316,14 @@ def create_img(obj3d, rotation, grayscale = False):
     else:
         flag = True
                     
-                
     if grayscale == False:
         img1 = img0.copy()
         img2 = img0.copy()   
-    
         img = np.stack((img0,img1,img2), axis=2)
     else:
         img = img0
     
     img = img * 255
-    
     
     return img, flag
 
@@ -501,4 +528,3 @@ class VOCDetection(data.Dataset):
 
     def __len__(self):
         return self.num_samples
-

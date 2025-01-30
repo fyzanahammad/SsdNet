@@ -260,31 +260,37 @@ def multibox(vgg, extra_layers, cfg, num_classes):
 base = {
     '64': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
             512, 512, 512],
+    '128': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
+            512, 512, 512],
     '300': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
             512, 512, 512],
     '512': [],
 }
 extras = {
-    '64': [256, 'S', 512, 128, 'S', 256],
+    '64': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
+    '128': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
     '300': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
     '512': [],
 }
 mbox = {
     '64': [6, 6, 6, 6, 6, 6], 
+    '128': [6, 6, 6, 6, 6, 6], 
     '300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location
     '512': [],
 }
 
 
-def build_ssd(size=64, num_classes=21):
-#    if phase != "test" and phase != "train":
-#        print("ERROR: Phase: " + phase + " not recognized")
-#        return
-#    if size != 64:
-#        print("ERROR: You specified size " + repr(size) + ". However, " +
-#              "currently only SSD (size=64) is supported!")
-#        return
-    base_, extras_, head_ = multibox(vgg(base[str(size)], 3),
-                                     add_extras(extras[str(size)], 1024),
-                                     mbox[str(size)], num_classes)
-    return SSD(size, base_, extras_, head_, num_classes)
+def build_ssd(size=128, num_classes=21):  
+    """Builds an SSD model
+    Args:
+        phase: train or test
+        size: input image size
+        num_classes: number of classes
+    """
+    if size != 128:  
+        print("Error: Sorry only size 128 is supported currently!")  
+        return
+
+    return SSD(size, *multibox(vgg(base[str(size)], 3),
+                                add_extras(extras[str(size)], 1024),
+                                mbox[str(size)], num_classes), num_classes)
