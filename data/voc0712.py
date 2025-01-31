@@ -99,107 +99,88 @@ VOC_CLASSES = ('O ring', 'Through hole', 'Blind hole',
 #
 #        return res  # [[xmin, ymin, xmax, ymax, label_ind], ... ]
 
+def rotate_sample(sample, rotation, reverse=False):
+    """Rotate sample using GPU acceleration
+    Args:
+        sample: 3D array to rotate
+        rotation: rotation angle
+        reverse: whether to reverse rotation
+    Returns:
+        Rotated sample on GPU
+    """
+    # Move to GPU if not already there
+    if not isinstance(sample, cp.ndarray):
+        sample = cp.asarray(sample)
+    
+    # Pre-compute rotation operations
+    rotations = {
+        (1, True): lambda x: cp.rot90(x, k=1, axes=(2,1)),
+        (2, True): lambda x: cp.rot90(x, k=2, axes=(1,2)),
+        (3, True): lambda x: cp.rot90(x, k=1, axes=(1,2)),
+        (4, True): lambda x: cp.rot90(x, k=3, axes=(1,2)),
+        (5, True): lambda x: cp.rot90(x, k=1, axes=(0,2)),
+        (1, False): lambda x: cp.rot90(x, k=1, axes=(1,2)),
+        (2, False): lambda x: cp.rot90(x, k=2, axes=(1,2)),
+        (3, False): lambda x: cp.rot90(x, k=1, axes=(2,1)),
+        (4, False): lambda x: cp.rot90(x, k=3, axes=(1,2)),
+        (5, False): lambda x: cp.rot90(x, k=1, axes=(2,0))
+    }
+    
+    # Apply rotation if needed
+    key = (rotation, reverse)
+    if key in rotations:
+        sample = rotations[key](sample)
+    
+    return sample
+
+
 def rotate_sample24(sample):
+    """Rotate sample using GPU acceleration
+    Args:
+        sample: 3D array to rotate
+    Returns:
+        Rotated sample on GPU
+    """
+    # Move to GPU if not already there
+    if not isinstance(sample, cp.ndarray):
+        sample = cp.asarray(sample)
     
-#    strategy = random.randint(0,3)
-#    
-#    if strategy <= 2:
-#        sample = cp.flip(sample,strategy).copy()
-    
-     
+    # Random rotation strategy
     rotation = random.randint(0,23)
     
-    if rotation == 1:
-        sample = cp.rot90(sample,1,(1,2)).copy()  
-    elif rotation == 2:
-        sample = cp.rot90(sample,2,(1,2)).copy()  
-    elif rotation == 3:
-        sample = cp.rot90(sample,1,(2,1)).copy()  
-    elif rotation == 4:
-        sample = cp.rot90(sample,1,(0,1)).copy()  
-    elif rotation == 5:
-        sample = cp.rot90(sample,1,(0,1)).copy()  
-        sample = cp.rot90(sample,1,(1,2)).copy()  
-    elif rotation == 6:
-        sample = cp.rot90(sample,1,(0,1)).copy()  
-        sample = cp.rot90(sample,2,(1,2)).copy()  
-    elif rotation == 7:
-        sample = cp.rot90(sample,1,(0,1)).copy()  
-        sample = cp.rot90(sample,1,(2,1)).copy()  
-    elif rotation == 8:
-        sample = cp.rot90(sample,1,(1,0)).copy()  
-    elif rotation == 9:
-        sample = cp.rot90(sample,1,(1,0)).copy()  
-        sample = cp.rot90(sample,1,(1,2)).copy()  
-    elif rotation == 10:
-        sample = cp.rot90(sample,1,(1,0)).copy()  
-        sample = cp.rot90(sample,2,(1,2)).copy()  
-    elif rotation == 11:
-        sample = cp.rot90(sample,1,(1,0)).copy()  
-        sample = cp.rot90(sample,1,(2,1)).copy()  
-    elif rotation == 12:
-        sample = cp.rot90(sample,2,(1,0)).copy()  
-    elif rotation == 13:
-        sample = cp.rot90(sample,2,(1,0)).copy()  
-        sample = cp.rot90(sample,1,(1,2)).copy()  
-    elif rotation == 14:
-        sample = cp.rot90(sample,2,(1,0)).copy()  
-        sample = cp.rot90(sample,2,(1,2)).copy()  
-    elif rotation == 15:
-        sample = cp.rot90(sample,2,(1,0)).copy()  
-        sample = cp.rot90(sample,1,(2,1)).copy()  
-    elif rotation == 16:
-        sample = cp.rot90(sample,1,(0,2)).copy()  
-    elif rotation == 17:
-        sample = cp.rot90(sample,1,(0,2)).copy()  
-        sample = cp.rot90(sample,1,(1,2)).copy()  
-    elif rotation == 18:
-        sample = cp.rot90(sample,1,(0,2)).copy()  
-        sample = cp.rot90(sample,2,(1,2)).copy()  
-    elif rotation == 19:
-        sample = cp.rot90(sample,1,(0,2)).copy()  
-        sample = cp.rot90(sample,1,(2,1)).copy()  
-    elif rotation == 20:
-        sample = cp.rot90(sample,1,(2,0)).copy()  
-    elif rotation == 21:
-        sample = cp.rot90(sample,1,(2,0)).copy()  
-        sample = cp.rot90(sample,1,(1,2)).copy()  
-    elif rotation == 22:
-        sample = cp.rot90(sample,1,(2,0)).copy()  
-        sample = cp.rot90(sample,2,(1,2)).copy()  
-    elif rotation == 23:
-        sample = cp.rot90(sample,1,(2,0)).copy()  
-        sample = cp.rot90(sample,1,(2,1)).copy()  
-        
+    # Pre-compute rotation matrices for better performance
+    rotations = {
+        1: lambda x: cp.rot90(x, 1, (1,2)),
+        2: lambda x: cp.rot90(x, 2, (1,2)),
+        3: lambda x: cp.rot90(x, 1, (2,1)),
+        4: lambda x: cp.rot90(x, 1, (0,1)),
+        5: lambda x: cp.rot90(cp.rot90(x, 1, (0,1)), 1, (1,2)),
+        6: lambda x: cp.rot90(cp.rot90(x, 1, (0,1)), 2, (1,2)),
+        7: lambda x: cp.rot90(cp.rot90(x, 1, (0,1)), 1, (2,1)),
+        8: lambda x: cp.rot90(x, 1, (1,0)),
+        9: lambda x: cp.rot90(cp.rot90(x, 1, (1,0)), 1, (1,2)),
+        10: lambda x: cp.rot90(cp.rot90(x, 1, (1,0)), 2, (1,2)),
+        11: lambda x: cp.rot90(cp.rot90(x, 1, (1,0)), 1, (2,1)),
+        12: lambda x: cp.rot90(x, 2, (1,0)),
+        13: lambda x: cp.rot90(cp.rot90(x, 2, (1,0)), 1, (1,2)),
+        14: lambda x: cp.rot90(cp.rot90(x, 2, (1,0)), 2, (1,2)),
+        15: lambda x: cp.rot90(cp.rot90(x, 2, (1,0)), 1, (2,1)),
+        16: lambda x: cp.rot90(x, 1, (0,2)),
+        17: lambda x: cp.rot90(cp.rot90(x, 1, (0,2)), 1, (1,2)),
+        18: lambda x: cp.rot90(cp.rot90(x, 1, (0,2)), 2, (1,2)),
+        19: lambda x: cp.rot90(cp.rot90(x, 1, (0,2)), 1, (2,1)),
+        20: lambda x: cp.rot90(x, 1, (2,0)),
+        21: lambda x: cp.rot90(cp.rot90(x, 1, (2,0)), 1, (1,2)),
+        22: lambda x: cp.rot90(cp.rot90(x, 1, (2,0)), 2, (1,2)),
+        23: lambda x: cp.rot90(cp.rot90(x, 1, (2,0)), 1, (2,1))
+    }
+    
+    # Apply rotation if needed
+    if rotation in rotations:
+        sample = rotations[rotation](sample)
+    
     return sample
 
-
-def rotate_sample(sample,rotation, reverse = False):
-
-    if reverse:
-        if rotation == 1:
-            sample = cp.rot90(sample, -2, (0,1)).copy()  
-        elif rotation == 2:
-            sample = cp.rot90(sample, -1, (0,1)).copy()  
-        elif rotation == 3:
-            sample = cp.rot90(sample, -1, (1,0)).copy()  
-        elif rotation == 4:
-            sample = cp.rot90(sample, -1, (2,0)).copy()  
-        elif rotation == 5:
-            sample = cp.rot90(sample, -1, (0,2)).copy() 
-    else:
-        if rotation == 1:
-            sample = cp.rot90(sample, 2, (0,1)).copy()  
-        elif rotation == 2:
-            sample = cp.rot90(sample, 1, (0,1)).copy()  
-        elif rotation == 3:
-            sample = cp.rot90(sample, 1, (1,0)).copy()  
-        elif rotation == 4:
-            sample = cp.rot90(sample, 1, (2,0)).copy()  
-        elif rotation == 5:
-            sample = cp.rot90(sample, 1, (0,2)).copy() 
-        
-    return sample
 
 def get_label_from_csv(filename):
     
@@ -236,96 +217,100 @@ def achieve_legal_model(list_IDs, list_size, factor):
 
 
 def achieve_random_model(list_IDs, list_size, grid_size=128):  
-    """Create a random model with multiple features
+    """Create a random model with multiple features using GPU acceleration
     Args:
         list_IDs: list of model IDs
         list_size: dictionary of model sizes
         grid_size: size of the grid (64 or 128)
     """
-    # Original number of features for 64 grid
-    #num_features = random.randint(2,10)
-    #factor = 76 - 6*num_features
-    
     # Adjusted for 128 grid - allowing fewer features since each is 8x larger
-    num_features = random.randint(2,6)  
-    factor = 152 - 12*num_features  
+    num_features = random.randint(2,6)  # Reduced max features from 10 to 6
+    factor = 152 - 12*num_features  # Doubled for 128 grid
     
-    components = np.zeros((num_features, grid_size, grid_size, grid_size))
-    ret_model = np.ones((grid_size, grid_size, grid_size))
-    model_label = np.zeros((0))
+    # Initialize arrays directly on GPU
+    components = cp.zeros((num_features, grid_size, grid_size, grid_size), dtype=cp.bool_)
+    ret_model = cp.ones((grid_size, grid_size, grid_size), dtype=cp.bool_)
+    model_label = cp.zeros(0, dtype=cp.int32)
     
-    for i in range(num_features):
-        label, model = achieve_legal_model(list_IDs, list_size, factor)
-        model_label = np.append(model_label, label)
+    # Create memory pool for efficient GPU memory management
+    with cp.cuda.Device(0):
+        memory_pool = cp.get_default_memory_pool()
         
-        # If model is 64 grid but we need 128, upsample it in rotate_sample24
-        if model.shape[0] == 64 and grid_size == 128:
-            model_128 = np.zeros((128, 128, 128), dtype=model.dtype)
-            for x in range(64):
-                for y in range(64):
-                    for z in range(64):
-                        # Each 64 grid voxel becomes 2x2x2 voxels in 128 grid
-                        model_128[x*2:(x+1)*2, y*2:(y+1)*2, z*2:(z+1)*2] = model[x,y,z]
-            components[i,:,:,:] = rotate_sample24(model_128)
-        else:
-            components[i,:,:,:] = rotate_sample24(model)
+        for i in range(num_features):
+            label, model = achieve_legal_model(list_IDs, list_size, factor)
+            model_label = cp.append(model_label, label)
             
-        ret_model = ret_model * components[i,:,:,:]
+            # Move model to GPU if it's not already there
+            if not isinstance(model, cp.ndarray):
+                model = cp.asarray(model)
             
-    return ret_model, model_label, components
+            # If model is 64 grid but we need 128, upsample it efficiently
+            if model.shape[0] == 64 and grid_size == 128:
+                model_128 = cp.repeat(cp.repeat(cp.repeat(model, 2, axis=0), 2, axis=1), 2, axis=2)
+                components[i] = rotate_sample24(model_128)
+            else:
+                components[i] = rotate_sample24(model)
+                
+            ret_model = ret_model & components[i]  # Use & for boolean arrays
+            
+            # Free up GPU memory after each iteration
+            memory_pool.free_all_blocks()
+            
+    # Move results back to CPU
+    return cp.asnumpy(ret_model), cp.asnumpy(model_label), cp.asnumpy(components)
 
 
     
-def create_img(obj3d, rotation, grayscale=False, grid_size=64):  
-    """Create an image from 3D object data
+def create_img(obj3d, rotation, grayscale=False, grid_size=64):
+    """Create an image from 3D object data using GPU acceleration
     Args:
         obj3d: 3D object data
         rotation: rotation angle
         grayscale: whether to create grayscale image
         grid_size: size of the grid (64 or 128)
     """
+    # Move data to GPU if not already there
+    if not isinstance(obj3d, cp.ndarray):
+        obj3d = cp.asarray(obj3d)
+    
     # If input is 64 grid but we need 128, upsample it
     if obj3d.shape[0] == 64 and grid_size == 128:
-        obj3d_128 = np.zeros((128, 128, 128), dtype=obj3d.dtype)
-        for i in range(64):
-            for j in range(64):
-                for k in range(64):
-                    # Each 64 grid voxel becomes 2x2x2 voxels in 128 grid
-                    obj3d_128[i*2:(i+1)*2, j*2:(j+1)*2, k*2:(k+1)*2] = obj3d[i,j,k]
-        cursample = obj3d_128.copy()
+        # Use GPU for upsampling - more efficient than loops
+        obj3d_128 = cp.repeat(cp.repeat(cp.repeat(obj3d, 2, axis=0), 2, axis=1), 2, axis=2)
+        cursample = obj3d_128
     else:
         cursample = obj3d.copy()
     
     cursample = rotate_sample(cursample, rotation)
     
-    img0 = np.zeros((cursample.shape[1], cursample.shape[2]))
+    # Use GPU to find first True value along depth axis
+    depth_mask = cursample.astype(cp.int8)  # Convert bool to int for argmax
+    img0 = cp.zeros((cursample.shape[1], cursample.shape[2]), dtype=cp.float32)
     
-    for i in range(img0.shape[0]):
-        for j in range(img0.shape[1]):
-            for d in range(cursample.shape[0]):
-                if cursample[d,i,j] == True:
-                    img0[i,j] = d/cursample.shape[0]
-                    break
-                
-                if d == cursample.shape[0] - 1:
-                    img0[i,j] = 1
-                    break
+    # Find indices of first True value along depth axis
+    first_true = cp.argmax(depth_mask, axis=0)
+    # Create mask for cases where no True value exists
+    no_true_mask = ~cp.any(depth_mask, axis=0)
+    
+    # Set values based on first True position
+    img0[~no_true_mask] = first_true[~no_true_mask].astype(cp.float32) / cursample.shape[0]
+    img0[no_true_mask] = 1.0
     
     if img0.mean() == 0:
         flag = False
     else:
         flag = True
                     
-    if grayscale == False:
-        img1 = img0.copy()
-        img2 = img0.copy()   
-        img = np.stack((img0,img1,img2), axis=2)
+    if not grayscale:
+        # Use GPU for stacking
+        img = cp.stack((img0, img0, img0), axis=2)
     else:
         img = img0
     
     img = img * 255
     
-    return img, flag
+    # Move result back to CPU for matplotlib
+    return cp.asnumpy(img), flag
 
 def achieve_model_gt(model_label, model_components, rotation):
     
